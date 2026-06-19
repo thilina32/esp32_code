@@ -3,23 +3,22 @@ const mqtt = require('mqtt');
 const path = require('path');
 const fs = require('fs');
 
-console.log("🚀 Starting Cloud Auto-Update Pipeline...\n");
+console.log("🚀 Starting Clean Cloud Auto-Update Pipeline...\n");
 
 const projectPath = __dirname;
-// ෆෝල්ඩර් එකේ නම ඔටෝම අරගන්නවා (උදා: esp32_code)
 const folderName = path.basename(projectPath); 
 
-// ෆෝල්ඩර් එකේ නමට සමාන .ino ෆයිල් එක හොයනවා
 const inoFile = `${folderName}.ino`; 
-const compiledBin = path.join(projectPath, `${folderName}.ino.bin`);
+const buildDir = path.join(projectPath, 'build'); // අලුත් Build ෆෝල්ඩර් එක
+const compiledBin = path.join(buildDir, `${folderName}.ino.bin`); // ඒක ඇතුලේ තියෙන bin එක
+const finalBin = path.join(projectPath, 'code.bin'); // එලියට ගන්න bin එක
 
-// ESP එක අලුත් Update එක විදියට හොයන්නේ code.bin නිසා මේක වෙනස් කරන්නේ නෑ
-const finalBin = path.join(projectPath, 'code.bin');
-
-// 0. Compilation කොටස (Arduino CLI) ----------------------------------
+// 0. Compilation කොටස (build ෆෝල්ඩර් එකට) ---------------------------
 try {
     console.log(`🛠️ 1/4: Compiling ${inoFile} for ESP32-S3...`);
-    const compileCommand = `arduino-cli compile --fqbn esp32:esp32:esp32s3 --output-dir . "${inoFile}"`;
+    
+    // --output-dir build කියලා දීලා තියෙනවා (ඔක්කොම කුණු ටික build එකට යයි)
+    const compileCommand = `arduino-cli compile --fqbn esp32:esp32:esp32s3 --output-dir build "${inoFile}"`;
     
     execSync(compileCommand, { stdio: 'inherit', cwd: projectPath });
     console.log("\n✅ Compilation Successful!");
@@ -29,28 +28,23 @@ try {
     process.exit(1); 
 }
 
-// 1. Rename .bin File -----------------------------------------------
+// 1. Extract & Rename .bin File -------------------------------------
 try {
     if (fs.existsSync(compiledBin)) {
-        // පරණ code.bin එකක් තියෙනවා නම් ඒක අයින් කරනවා
-        if (fs.existsSync(finalBin)) {
-            fs.unlinkSync(finalBin); 
-        }
-        // අලුත් එක code.bin කියලා Rename කරනවා
-        fs.renameSync(compiledBin, finalBin);
-        console.log("🔀 2/4: Binary file renamed to code.bin successfully.");
+        // build එක ඇතුලේ තියෙන bin එක ප්‍රධාන ෆෝල්ඩර් එකට copy කරලා code.bin කියලා rename කරනවා
+        fs.copyFileSync(compiledBin, finalBin);
+        console.log("🔀 2/4: Binary file extracted and saved as code.bin successfully.");
     } else {
-        throw new Error(`Compiled binary file (${folderName}.ino.bin) not found!`);
+        throw new Error(`Compiled binary file not found in build directory!`);
     }
 } catch (error) {
-    console.error("\n❌ Failed to rename binary file:", error);
+    console.error("\n❌ Failed to extract binary file:", error);
     process.exit(1);
 }
 
 // 2. Git Automation කොටස --------------------------------------------
 try {
     console.log("\n📦 3/4: Adding files to Git...");
-    // අලුත් ෆයිල්ස් ඔක්කොම එකපාර Git එකට ඇඩ් කරනවා
     execSync('git add .', { stdio: 'inherit', cwd: projectPath });
 
     const commitMsg = `Auto Cloud OTA Update: ${new Date().toLocaleString()}`;

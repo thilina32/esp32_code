@@ -1,0 +1,17 @@
+# Node.js Dependencies
+node_modules/
+npm-debug.log
+
+# Arduino Compilation Output
+build/
+
+# Environment Variables (අනාගතයේදී පාවිච්චි කලොත්)
+.env
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+
+# IDE and Editor Folders
+.vscode/
+.idea/
