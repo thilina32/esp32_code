@@ -3,22 +3,13 @@
 #include <PubSubClient.h>
 #include <HTTPUpdate.h>
 
-// =======================================================
-// 🎚️ LOGGING SWITCH (ON/OFF)
-// මේකෙන් තමයි Logs ඔක්කොම පාලනය කරන්නේ.
-// මේ පේලිය කමෙන්ට් කලොත් (//#define ENABLE_MQTT_LOGS) 
-// Logs යවන කෝඩ් එක bin එකට compile වෙන්නේම නෑ. 
-// =======================================================
 //#define ENABLE_MQTT_LOGS 
 
 #ifdef ENABLE_MQTT_LOGS
-  // Switch එක ON නම්, මේකෙන් 'board/logs' topic එකට මැසේජ් එක යවනවා
   #define MQTT_LOG(msg) { if(client.connected()) { client.publish("board/logs", String(msg).c_str()); } }
 #else
-  // Switch එක OFF නම්, Compiler එක මේ කෝඩ් කෑල්ල සම්පූර්ණයෙන්ම හිස් කරනවා.
   #define MQTT_LOG(msg) 
 #endif
-// =======================================================
 
 const char* ssid = "shan_dev_2";
 const char* password = "888888889";
@@ -30,13 +21,14 @@ const char* mqtt_password = "Thilinakavishan32@gmail.com";
 
 const char* firmware_url = "https://raw.githubusercontent.com/thilina32/esp32_code/main/code.bin"; 
 
-// Update LED එක සඳහා Pin එක
 const int UPDATE_LED = 19; 
 
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
-bool startOTA = false; 
+// 🛠️ වෙනස 1: 'volatile' එකතු කලා (Compiler එකෙන් මේක ignore කරන එක නවත්තන්න)
+volatile bool startOTA = false; 
+volatile bool isUpdating = false; // Update වෙද්දි අනිත් වැඩ නවත්තන්න
 
 void setup_wifi() {
   delay(10);
@@ -45,12 +37,12 @@ void setup_wifi() {
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
   }
-  // මෙතනදී තාම MQTT Connect වෙලා නැති නිසා මුකුත් ලොග් යවන්නේ නෑ
 }
 
 void performOTA() {
-  MQTT_LOG("Starting OTA Update from GitHub...");
+  isUpdating = true; // 🛠️ වෙනස 2: Update වෙද්දි Sensor Task එක තාවකාලිකව නවත්තනවා
   
+  MQTT_LOG("Starting OTA Update from GitHub...");
   digitalWrite(UPDATE_LED, HIGH); 
   
   WiFiClientSecure otaClient;
@@ -60,13 +52,14 @@ void performOTA() {
 
   switch (ret) {
     case HTTP_UPDATE_FAILED:
-      // Error එක String එකක් විදියට හදලා යවනවා
       MQTT_LOG(String("HTTP_UPDATE_FAILED Error: ") + httpUpdate.getLastErrorString());
       digitalWrite(UPDATE_LED, LOW); 
+      isUpdating = false; // Fail වුනොත් ආයෙත් sensors වැඩ කරන්න දෙනවා
       break;
     case HTTP_UPDATE_NO_UPDATES:
       MQTT_LOG("HTTP_UPDATE_NO_UPDATES");
       digitalWrite(UPDATE_LED, LOW); 
+      isUpdating = false;
       break;
     case HTTP_UPDATE_OK:
       MQTT_LOG("HTTP_UPDATE_OK - Update Successful! Restarting..."); 
@@ -75,28 +68,30 @@ void performOTA() {
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
-  String message;
+  String message = "";
   for (int i = 0; i < length; i++) {
     message += (char)payload[i];
   }
   
+  // 🛠️ වෙනස 3: අගට එකතු වෙලා තියෙන invisible spaces/newlines අයින් කරනවා
+  message.trim(); 
+  
   MQTT_LOG(String("Message Arrived [") + topic + "]: " + message);
 
-  if (String(topic) == "board/update" && message == "START_OTA") {
+  // 🛠️ වෙනස 4: String(topic) වෙනුවට කෙලින්ම strcmp පාවිච්චි කරනවා (සීයට සීයක් ශුවර් කරන්න)
+  if (strcmp(topic, "board/update") == 0 && message == "START_OTA") {
+    MQTT_LOG("⚡ OTA Signal Verified! Preparing to Update..."); // මේක ලොග් එකට ආවොත් වැඩේ 100% හරි
     startOTA = true;
   }
 }
 
 void reconnect() {
   while (!client.connected()) {
-    
     if (client.connect("ESP32_Device_01", mqtt_user, mqtt_password, "board/status", 1, true, "Offline")) {
       client.publish("board/status", "Online", true); 
       client.subscribe("board/update");
       
-      // කනෙක්ට් වුන ගමන් ලොග් එකක් යවනවා
       MQTT_LOG("Connected to HiveMQ & Ready!");
-      
     } else {
       vTaskDelay(pdMS_TO_TICKS(5000)); 
     }
@@ -107,15 +102,16 @@ void sensorTask(void * parameter) {
   for(;;) { 
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    MQTT_LOG("test..");
+    // 🛠️ වෙනස 5: Update වෙන වෙලාවට විතරක් මේක යවන්නේ නෑ 
+    if (!isUpdating) {
+      MQTT_LOG("test..");
+    }
     
     vTaskDelay(pdMS_TO_TICKS(3000)); 
   }
 }
 
 void setup() {
-  // Serial.begin(115200); එක සම්පූර්ණයෙන්ම අයින් කලා
-  
   pinMode(UPDATE_LED, OUTPUT);
   digitalWrite(UPDATE_LED, LOW);
   
