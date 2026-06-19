@@ -102,10 +102,10 @@ void reconnect() {
 
 void sensorTask(void * parameter) {
   for(;;) { 
-    Serial.println("Reading Ultrasonic Sensor...");
+    //Serial.println("Reading Ultrasonic Sensor...");
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    Serial.println("Reading PIR Sensor...");
+    Serial.println("test..");
     vTaskDelay(pdMS_TO_TICKS(3000)); 
   }
 }
