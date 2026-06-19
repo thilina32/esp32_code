@@ -3,6 +3,23 @@
 #include <PubSubClient.h>
 #include <HTTPUpdate.h>
 
+// =======================================================
+// 🎚️ LOGGING SWITCH (ON/OFF)
+// මේකෙන් තමයි Logs ඔක්කොම පාලනය කරන්නේ.
+// මේ පේලිය කමෙන්ට් කලොත් (//#define ENABLE_MQTT_LOGS) 
+// Logs යවන කෝඩ් එක bin එකට compile වෙන්නේම නෑ. 
+// =======================================================
+#define ENABLE_MQTT_LOGS 
+
+#ifdef ENABLE_MQTT_LOGS
+  // Switch එක ON නම්, මේකෙන් 'board/logs' topic එකට මැසේජ් එක යවනවා
+  #define MQTT_LOG(msg) { if(client.connected()) { client.publish("board/logs", String(msg).c_str()); } }
+#else
+  // Switch එක OFF නම්, Compiler එක මේ කෝඩ් කෑල්ල සම්පූර්ණයෙන්ම හිස් කරනවා.
+  #define MQTT_LOG(msg) 
+#endif
+// =======================================================
+
 const char* ssid = "shan_dev_2";
 const char* password = "888888889";
 
@@ -23,24 +40,17 @@ bool startOTA = false;
 
 void setup_wifi() {
   delay(10);
-  Serial.println();
-  Serial.print("Connecting to WiFi: ");
-  Serial.println(ssid);
-
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
   }
-
-  Serial.println("\nWiFi connected!");
+  // මෙතනදී තාම MQTT Connect වෙලා නැති නිසා මුකුත් ලොග් යවන්නේ නෑ
 }
 
 void performOTA() {
-  Serial.println("Starting OTA Update from GitHub...");
+  MQTT_LOG("Starting OTA Update from GitHub...");
   
-  // Update එක පටන් ගන්නකොටම LED එක පත්තු කරනවා
   digitalWrite(UPDATE_LED, HIGH); 
   
   WiFiClientSecure otaClient;
@@ -50,18 +60,16 @@ void performOTA() {
 
   switch (ret) {
     case HTTP_UPDATE_FAILED:
-      Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
-      // Update එක Fail වුනොත් LED එක නිවනවා
+      // Error එක String එකක් විදියට හදලා යවනවා
+      MQTT_LOG(String("HTTP_UPDATE_FAILED Error: ") + httpUpdate.getLastErrorString());
       digitalWrite(UPDATE_LED, LOW); 
       break;
     case HTTP_UPDATE_NO_UPDATES:
-      Serial.println("HTTP_UPDATE_NO_UPDATES");
-      // අලුත් Update එකක් නැත්නම් LED එක නිවනවා
+      MQTT_LOG("HTTP_UPDATE_NO_UPDATES");
       digitalWrite(UPDATE_LED, LOW); 
       break;
     case HTTP_UPDATE_OK:
-      Serial.println("HTTP_UPDATE_OK - Update Successful! Restarting..."); 
-      // Update එක හරි ගියොත් ESP එක Restart වෙනවා, එතකොට LED එක Auto OFF වෙනවා
+      MQTT_LOG("HTTP_UPDATE_OK - Update Successful! Restarting..."); 
       break;
   }
 }
@@ -72,10 +80,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     message += (char)payload[i];
   }
   
-  Serial.print("MQTT Message Arrived [");
-  Serial.print(topic);
-  Serial.print("]: ");
-  Serial.println(message);
+  MQTT_LOG(String("Message Arrived [") + topic + "]: " + message);
 
   if (String(topic) == "board/update" && message == "START_OTA") {
     startOTA = true;
@@ -84,17 +89,15 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void reconnect() {
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
     
     if (client.connect("ESP32_Device_01", mqtt_user, mqtt_password, "board/status", 1, true, "Offline")) {
-      Serial.println("Connected to HiveMQ!");
       client.publish("board/status", "Online", true); 
       client.subscribe("board/update");
       
+      // කනෙක්ට් වුන ගමන් ලොග් එකක් යවනවා
+      MQTT_LOG("Connected to HiveMQ & Ready!");
+      
     } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
       vTaskDelay(pdMS_TO_TICKS(5000)); 
     }
   }
@@ -102,18 +105,17 @@ void reconnect() {
 
 void sensorTask(void * parameter) {
   for(;;) { 
-    //Serial.println("Reading Ultrasonic Sensor...");
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    Serial.println("test..");
+    MQTT_LOG("test..");
+    
     vTaskDelay(pdMS_TO_TICKS(3000)); 
   }
 }
 
 void setup() {
-  Serial.begin(115200);
+  // Serial.begin(115200); එක සම්පූර්ණයෙන්ම අයින් කලා
   
-  // LED Pin එක Output එකක් විදියට හදලා මුලින්ම නිවලා තියනවා
   pinMode(UPDATE_LED, OUTPUT);
   digitalWrite(UPDATE_LED, LOW);
   
