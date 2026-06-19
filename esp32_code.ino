@@ -9,7 +9,7 @@
 // මේ පේලිය කමෙන්ට් කලොත් (//#define ENABLE_MQTT_LOGS) 
 // Logs යවන කෝඩ් එක bin එකට compile වෙන්නේම නෑ. 
 // =======================================================
-#define ENABLE_MQTT_LOGS 
+//#define ENABLE_MQTT_LOGS 
 
 #ifdef ENABLE_MQTT_LOGS
   // Switch එක ON නම්, මේකෙන් 'board/logs' topic එකට මැසේජ් එක යවනවා

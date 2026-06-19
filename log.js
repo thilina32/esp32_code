@@ -1,6 +1,6 @@
 const mqtt = require('mqtt');
 
-console.log("📡 Starting Remote Serial Monitor...\n");
+console.log("📡 Starting Remote Serial Monitor (Sri Lanka Time)...\n");
 
 // ඔයාගේ HiveMQ Credentials
 const mqttUrl = "mqtts://65f4ab6222f64614b909988b240a72c7.s1.eu.hivemq.cloud:8883";
@@ -23,8 +23,16 @@ client.on('connect', () => {
 });
 
 client.on('message', (topic, message) => {
-    // මැසේජ් එක ආපු වෙලාව ගන්නවා
-    const time = new Date().toLocaleTimeString();
+    
+    // 🇱🇰 හරියටම ලංකාවේ වෙලාව ගන්න කොටස
+    const time = new Date().toLocaleString('en-US', { 
+        timeZone: 'Asia/Colombo',
+        hour12: true,         // AM/PM විදියට පෙන්නන්න
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+    });
+
     const msgString = message.toString();
 
     // Topic එක අනුව ලස්සනට Terminal එකේ Print කරනවා
