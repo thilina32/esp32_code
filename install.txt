@@ -1,0 +1,168 @@
+Cloud Server එකක් (Linux / VPS) පාවිච්චි කරලා මේ වැඩේ කරන එක තමයි **හොඳම සහ Professional ම විදිය**. එතකොට ඔයාගේ ලැප්ටොප් එක ඔන් කරලා තියන්න ඕනෙත් නෑ, ඕනෙම තැනක ඉඳන් කෝඩ් එක වෙනස් කරලා Server එකට දුන්නම එයා ඔටෝම Compile කරලා, GitHub යවලා, ESP එකටත් Update එක දෙනවා.
+
+අපි මුල ඉඳන්ම පියවරෙන් පියවර මේක හදාගමු. Server එකට (Ubuntu/Debian කියලා හිතලා) මුකුත්ම Install කරලා නැති නිසා, මේ පහල තියෙන කමාන්ඩ් ටික Terminal එකේ එකින් එක Run කරන්න.
+
+### පියවර 1: Linux Server එකට අවශ්‍ය දේවල් Install කිරීම
+
+**1. System එක Update කරලා Node.js සහ Git දාගන්න:**
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y curl git nodejs npm
+
+```
+
+**2. Arduino CLI එක Install කිරීම:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=~/.local/bin sh
+export PATH=$PATH:~/.local/bin
+echo 'export PATH=$PATH:~/.local/bin' >> ~/.bashrc
+
+```
+
+**3. ESP32 Core එක සහ Libraries Arduino CLI එකට දැමීම:**
+මේ කමාන්ඩ් ටිකෙන් තමයි ESP32-S3 බෝඩ් එකයි, ඔයාගේ කෝඩ් එකේ තියෙන `PubSubClient` ලයිබ්‍රරි එකයි සර්වර් එකට දාගන්නේ.
+
+```bash
+arduino-cli config init
+arduino-cli config set board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+arduino-cli core update-index
+arduino-cli core install esp32:esp32
+arduino-cli lib install "PubSubClient"
+
+```
+
+---
+
+### පියවර 2: ෆෝල්ඩර් එක සහ ෆයිල් හදාගැනීම
+
+**අනිවාර්ය නීතියක්:** Arduino වල `.ino` ෆයිල් එකක් Compile කරන්න නම්, ඒ **ෆයිල් එකේ නමයි, ඒක තියෙන ෆෝල්ඩර් එකේ නමයි සමාන වෙන්නම ඕනේ.**
+ඒ නිසා ඔයාගේ ෆෝල්ඩර් එකේ නම `code` කියලා හදාගන්න. ඒක ඇතුලේ ඔයාගේ C++ කෝඩ් එක තියෙන ෆයිල් එක `code.ino` කියලා තියන්න.
+
+1. Git Clone එක Server එකට ගන්න. (මේක කරද්දී ඔයාගේ GitHub Personal Access Token එකක් පාවිච්චි කරන්න. නැත්තම් Script එක Auto Push වෙද්දී Password ඉල්ලලා හිර වෙනවා).
+2. ෆෝල්ඩර් එක ඇතුලට ගිහින් MQTT Package එක දාගන්න:
+```bash
+cd code
+npm init -y
+npm install mqtt
+
+```
+
+
+
+---
+
+### පියවර 3: අලුත් `deploy.js` Code එක (Linux සහ තනි ෆෝල්ඩර් එක සඳහා)
+
+ඔයා කිව්ව විදියටම `.ino` ෆයිල් එකයි, `.bin` ෆයිල් එකයි, අනිත් හැමදෙයක්ම තියෙන්නේ **තනි ෆෝල්ඩර් එකක්** ඇතුලේ. Arduino CLI එකෙන් Compile කරාම හැදෙන්නේ `code.ino.bin` කියලා ෆයිල් එකක්. ඒක ඔයාගේ ESP එක හොයන නමට (`code.bin`) ඔටෝම Rename වෙන්න මම මේ Script එක හැදුවා.
+
+ඔයාගේ `code` ෆෝල්ඩර් එක ඇතුලේ `deploy.js` කියලා ෆයිල් එකක් හදලා මේ කෝඩ් එක ඒකට දාන්න.
+
+```javascript
+const { execSync } = require('child_process');
+const mqtt = require('mqtt');
+const path = require('path');
+const fs = require('fs');
+
+console.log("🚀 Starting Cloud Auto-Update Pipeline...\n");
+
+// මෙතන ඔක්කොම තියෙන්නේ එකම Folder එකේ නිසා __dirname පාවිච්චි කරනවා
+const projectPath = __dirname;
+const inoFile = 'code.ino'; 
+const compiledBin = path.join(projectPath, 'code.ino.bin');
+const finalBin = path.join(projectPath, 'code.bin');
+
+// 0. Compilation කොටස (Arduino CLI) ----------------------------------
+try {
+    console.log(`🛠️ 1/4: Compiling ${inoFile} for ESP32-S3...`);
+    // --output-dir . කියන්නේ මේ ෆෝල්ඩර් එකේම ෆයිල්ස් ටික හදන්න කියන එක
+    const compileCommand = `arduino-cli compile --fqbn esp32:esp32:esp32s3 --output-dir . "${inoFile}"`;
+    
+    execSync(compileCommand, { stdio: 'inherit', cwd: projectPath });
+    console.log("\n✅ Compilation Successful!");
+
+} catch (error) {
+    console.error("\n❌ Compilation Failed! Please check your code for errors.");
+    process.exit(1); 
+}
+
+// 1. Rename .bin File -----------------------------------------------
+// Arduino වලින් හැදෙන code.ino.bin එක අපිට ඕන code.bin විදියට Rename කරනවා
+try {
+    if (fs.existsSync(compiledBin)) {
+        fs.renameSync(compiledBin, finalBin);
+        console.log("🔀 2/4: Binary file renamed to code.bin successfully.");
+    } else {
+        throw new Error("Compiled binary file not found!");
+    }
+} catch (error) {
+    console.error("\n❌ Failed to rename binary file:", error);
+    process.exit(1);
+}
+
+// 2. Git Automation කොටස --------------------------------------------
+try {
+    console.log("\n📦 3/4: Adding files to Git...");
+    execSync('git add code.bin deploy.js code.ino package.json package-lock.json', { stdio: 'inherit', cwd: projectPath });
+
+    const commitMsg = `Auto Cloud OTA Update: ${new Date().toLocaleString()}`;
+    execSync(`git commit -m "${commitMsg}"`, { stdio: 'inherit', cwd: projectPath });
+
+    console.log("☁️ Pushing to GitHub...");
+    execSync('git push origin main', { stdio: 'inherit', cwd: projectPath });
+    
+    console.log("\n✅ Git Push Successful!");
+
+} catch (error) {
+    console.log("\n⚠️ Git process failed or no new changes to commit.");
+}
+
+// 3. MQTT Trigger කොටස ---------------------------------------------
+console.log("\n⏳ Waiting 10 seconds for GitHub servers to refresh...");
+
+setTimeout(() => {
+    console.log("\n📡 4/4: Connecting to HiveMQ...");
+    
+    const mqttUrl = "mqtts://65f4ab6222f64614b909988b240a72c7.s1.eu.hivemq.cloud:8883";
+    const mqttClient = mqtt.connect(mqttUrl, {
+        username: "esp32",
+        password: "Thilinakavishan32@gmail.com",
+        clientId: `cloud_worker_${Math.random().toString(16).slice(3)}`
+    });
+
+    mqttClient.on('connect', () => {
+        console.log("✅ Connected to HiveMQ!");
+        
+        mqttClient.publish('board/update', 'START_OTA', { qos: 1 }, (err) => {
+            if (err) {
+                console.error("❌ Failed to send OTA trigger:", err);
+            } else {
+                console.log("🎯 'START_OTA' command sent to ESP32 successfully!");
+            }
+            
+            mqttClient.end();
+            console.log("\n🏁 Cloud Auto-Update Process 100% Complete!\n");
+            process.exit(0);
+        });
+    });
+
+    mqttClient.on('error', (err) => {
+        console.error("❌ MQTT Connection Error:", err);
+        process.exit(1);
+    });
+
+}, 10000);
+
+```
+
+### වැඩේ රන් කරන්නේ කොහොමද?
+
+දැන් ඔයාගේ Cloud Server එකේ Terminal එකෙන් ඔයාගේ `code` ෆෝල්ඩර් එක ඇතුලට ගිහින් මේ විදියට ගහන්න විතරයි තියෙන්නේ:
+
+```bash
+node deploy.js
+
+```
+
+**වැදගත්:** Git push වෙද්දී username/password අහලා හිර නොවෙන්න, ඔයා GitHub එකේ [Personal Access Token (PAT)](https://github.com/settings/tokens) එකක් හදලා, ඒකෙන් server එකේ git clone එක කරගන්න වග බලාගන්න. (උදාහරණයක් විදියට: `git clone https://<YOUR_TOKEN>@github.com/thilina32/esp32_code.git`).
