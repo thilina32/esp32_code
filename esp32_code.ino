@@ -5,7 +5,6 @@
 
 // =======================================================
 // 🎚️ LOGGING SWITCH (ON/OFF)
-// Logs ඕනේ නැත්නම් මේක කමෙන්ට් කරන්න (//#define ENABLE_MQTT_LOGS)
 // =======================================================
 #define ENABLE_MQTT_LOGS 
 
@@ -14,6 +13,12 @@
 #else
   #define MQTT_LOG(msg) 
 #endif
+
+//funtions
+void performOTA();
+void reconnect();
+void setup_wifi();
+void sensorTask(void * parameter);
 
 // =======================================================
 // 🛠️ CONFIGURATIONS
@@ -99,10 +104,9 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void reconnect() {
   while (!client.connected()) {
-    // Unique Client ID එකක් හදනවා Connection කඩන එක නවත්තන්න
     String clientId = "ESP32_Board_" + String(random(0xffff), HEX);
     
-    // LWT (Last Will) එක්ක Connect වෙනවා
+    // LWT Connect
     if (client.connect(clientId.c_str(), mqtt_user, mqtt_password, "board/status", 1, true, "Offline")) {
       
       client.publish("board/status", "Online", true); 
@@ -110,7 +114,7 @@ void reconnect() {
       
       MQTT_LOG("🟢 Connected to HiveMQ & Ready!");
       
-      // Connect වුන බව පෙන්නන්න පොඩි blink එකක් දෙනවා
+      // Connected blink
       digitalWrite(UPDATE_LED, HIGH); delay(200);
       digitalWrite(UPDATE_LED, LOW);
       
@@ -120,29 +124,12 @@ void reconnect() {
   }
 }
 
-// =======================================================
-// 🔄 FREERTOS TASKS
-// =======================================================
-
-void sensorTask(void * parameter) {
-  for(;;) { 
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    // Update වෙන්නේ නැති වෙලාවට විතරක් ලොග් යවනවා
-    if (!isUpdating) {
-      MQTT_LOG("test..");
-    }
-    
-    vTaskDelay(pdMS_TO_TICKS(3000)); 
-  }
-}
 
 // =======================================================
 // ⚙️ SETUP & LOOP
 // =======================================================
 
 void setup() {
-  // Serial.begin සම්පූර්ණයෙන්ම අයින් කරලා තියෙන්නේ (Hardware බරක් නෑ)
   
   pinMode(UPDATE_LED, OUTPUT);
   digitalWrite(UPDATE_LED, LOW);
@@ -153,7 +140,7 @@ void setup() {
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
 
-  // Sensor Task එක FreeRTOS හරහා දුවන්න දෙනවා
+  // set Sensor Task
   xTaskCreate(
     sensorTask,   
     "SensorTask", 
@@ -165,16 +152,36 @@ void setup() {
 }
 
 void loop() {
-  // OTA Flag එක On වුනොත් Update එක පටන් ගන්නවා
+  // OTA Flag on > update
   if (startOTA) {
     startOTA = false;
     performOTA();
   }
 
-  // MQTT Connection එක පවත්වාගෙන යනවා
+  // MQTT Connection online
   if (!client.connected()) {
     reconnect();
   }
   
   client.loop(); 
+}
+
+
+
+
+// =======================================================
+// 🔄 FREERTOS TASKS
+// =======================================================
+
+void sensorTask(void * parameter) {
+  for(;;) { 
+
+    if (isUpdating) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      continue;
+    }
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    MQTT_LOG("test..");    
+    vTaskDelay(pdMS_TO_TICKS(3000)); 
+  }
 }
