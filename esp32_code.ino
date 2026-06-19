@@ -35,17 +35,22 @@ void callback(char* topic, byte* payload, unsigned int length) {
     message += (char)payload[i];
   }
   
-  // ලොග් එකට යවනවා මැසේජ් එකේ දිග (Length) කීයද කියලා
-  MQTT_LOG("DEBUG: Topic=" + String(topic) + " | Length=" + String(message.length()));
+  // "==" වෙනුවට නියම C++ ක්‍රම පාවිච්චි කරමු
+  // 1. Topic එක Check කිරීම (strcmp පාවිච්චි කරලා)
+  bool topicMatch = (strcmp(topic, "board/update") == 0);
+  
+  // 2. Message එක Check කිරීම (.equals() පාවිච්චි කරලා)
+  bool msgMatch = message.equals("START_OTA");
 
-  // 🛠️ වඩාත් ආරක්ෂිත පරීක්ෂාව (String එක ඇතුලේ "START_OTA" තියෙනවද කියලා බලනවා)
-  if (String(topic).indexOf("board/update") >= 0 && message.indexOf("START_OTA") >= 0) {
-    
-    MQTT_LOG("✅ SUCCESS: Trigger Matched Perfectly!");
-    digitalWrite(UPDATE_LED, HIGH); // වැඩේ හරි නම් ලයිට් එක පත්තු කරනවා
-    
+  // වෙන වෙනම ලොග් කරලා බලමු කොතනද ලෙඩේ කියලා
+  MQTT_LOG("🕵️ Topic Check: " + String(topicMatch ? "PASS ✅" : "FAIL ❌"));
+  MQTT_LOG("🕵️ Msg Check: " + String(msgMatch ? "PASS ✅" : "FAIL ❌"));
+
+  if (topicMatch && msgMatch) {
+    MQTT_LOG("🔥 SUCCESS: Trigger eka wada Yako!");
+    digitalWrite(UPDATE_LED, HIGH);
   } else {
-    MQTT_LOG("❌ FAILED: Message didn't match.");
+    MQTT_LOG("❌ FAILED: Magulak wela thiyenawa!");
   }
 }
 
