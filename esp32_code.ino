@@ -1,15 +1,6 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
-#include <HTTPUpdate.h>
-
-//#define ENABLE_MQTT_LOGS 
-
-#ifdef ENABLE_MQTT_LOGS
-  #define MQTT_LOG(msg) { if(client.connected()) { client.publish("board/logs", String(msg).c_str()); } }
-#else
-  #define MQTT_LOG(msg) 
-#endif
 
 const char* ssid = "shan_dev_2";
 const char* password = "888888889";
@@ -19,51 +10,22 @@ const int mqtt_port = 8883;
 const char* mqtt_user = "esp32"; 
 const char* mqtt_password = "Thilinakavishan32@gmail.com";
 
-const char* firmware_url = "https://raw.githubusercontent.com/thilina32/esp32_code/main/code.bin"; 
-
 const int UPDATE_LED = 19; 
 
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
-// 🛠️ වෙනස 1: 'volatile' එකතු කලා (Compiler එකෙන් මේක ignore කරන එක නවත්තන්න)
-volatile bool startOTA = false; 
-volatile bool isUpdating = false; // Update වෙද්දි අනිත් වැඩ නවත්තන්න
-
-void setup_wifi() {
-  delay(10);
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+// Test කිරීම සඳහා ලොග් යවන Function එක
+void MQTT_LOG(String msg) {
+  if (client.connected()) {
+    client.publish("board/logs", msg.c_str());
   }
 }
 
-void performOTA() {
-  isUpdating = true; // 🛠️ වෙනස 2: Update වෙද්දි Sensor Task එක තාවකාලිකව නවත්තනවා
-  
-  MQTT_LOG("Starting OTA Update from GitHub...");
-  digitalWrite(UPDATE_LED, HIGH); 
-  
-  WiFiClientSecure otaClient;
-  otaClient.setInsecure(); 
-
-  t_httpUpdate_return ret = httpUpdate.update(otaClient, firmware_url);
-
-  switch (ret) {
-    case HTTP_UPDATE_FAILED:
-      MQTT_LOG(String("HTTP_UPDATE_FAILED Error: ") + httpUpdate.getLastErrorString());
-      digitalWrite(UPDATE_LED, LOW); 
-      isUpdating = false; // Fail වුනොත් ආයෙත් sensors වැඩ කරන්න දෙනවා
-      break;
-    case HTTP_UPDATE_NO_UPDATES:
-      MQTT_LOG("HTTP_UPDATE_NO_UPDATES");
-      digitalWrite(UPDATE_LED, LOW); 
-      isUpdating = false;
-      break;
-    case HTTP_UPDATE_OK:
-      MQTT_LOG("HTTP_UPDATE_OK - Update Successful! Restarting..."); 
-      break;
+void setup_wifi() {
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
   }
 }
 
@@ -73,41 +35,34 @@ void callback(char* topic, byte* payload, unsigned int length) {
     message += (char)payload[i];
   }
   
-  // 🛠️ වෙනස 3: අගට එකතු වෙලා තියෙන invisible spaces/newlines අයින් කරනවා
-  message.trim(); 
-  
-  MQTT_LOG(String("Message Arrived [") + topic + "]: " + message);
+  // ලොග් එකට යවනවා මැසේජ් එකේ දිග (Length) කීයද කියලා
+  MQTT_LOG("DEBUG: Topic=" + String(topic) + " | Length=" + String(message.length()));
 
-  // 🛠️ වෙනස 4: String(topic) වෙනුවට කෙලින්ම strcmp පාවිච්චි කරනවා (සීයට සීයක් ශුවර් කරන්න)
-  if (strcmp(topic, "board/update") == 0 && message == "START_OTA") {
-    MQTT_LOG("⚡ OTA Signal Verified! Preparing to Update..."); // මේක ලොග් එකට ආවොත් වැඩේ 100% හරි
-    startOTA = true;
+  // 🛠️ වඩාත් ආරක්ෂිත පරීක්ෂාව (String එක ඇතුලේ "START_OTA" තියෙනවද කියලා බලනවා)
+  if (String(topic).indexOf("board/update") >= 0 && message.indexOf("START_OTA") >= 0) {
+    
+    MQTT_LOG("✅ SUCCESS: Trigger Matched Perfectly!");
+    digitalWrite(UPDATE_LED, HIGH); // වැඩේ හරි නම් ලයිට් එක පත්තු කරනවා
+    
+  } else {
+    MQTT_LOG("❌ FAILED: Message didn't match.");
   }
 }
 
 void reconnect() {
   while (!client.connected()) {
-    if (client.connect("ESP32_Device_01", mqtt_user, mqtt_password, "board/status", 1, true, "Offline")) {
-      client.publish("board/status", "Online", true); 
+    if (client.connect("ESP32_Test_01", mqtt_user, mqtt_password)) {
       client.subscribe("board/update");
+      MQTT_LOG("🟢 TEST BOARD ONLINE & WAITING FOR TRIGGER...");
       
-      MQTT_LOG("Connected to HiveMQ & Ready!");
+      // Connect වුන ගමන් LED එක 3 පාරක් Blink කරලා නිවනවා
+      for(int i=0; i<3; i++) {
+        digitalWrite(UPDATE_LED, HIGH); delay(150);
+        digitalWrite(UPDATE_LED, LOW); delay(150);
+      }
     } else {
-      vTaskDelay(pdMS_TO_TICKS(5000)); 
+      delay(5000); 
     }
-  }
-}
-
-void sensorTask(void * parameter) {
-  for(;;) { 
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    // 🛠️ වෙනස 5: Update වෙන වෙලාවට විතරක් මේක යවන්නේ නෑ 
-    if (!isUpdating) {
-      MQTT_LOG("test..");
-    }
-    
-    vTaskDelay(pdMS_TO_TICKS(3000)); 
   }
 }
 
@@ -119,26 +74,11 @@ void setup() {
   espClient.setInsecure(); 
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
-
-  xTaskCreate(
-    sensorTask,   
-    "SensorTask", 
-    10000,        
-    NULL,         
-    1,            
-    NULL          
-  );
 }
 
 void loop() {
-  if (startOTA) {
-    startOTA = false;
-    performOTA();
-  }
-
   if (!client.connected()) {
     reconnect();
   }
-  
   client.loop(); 
 }
