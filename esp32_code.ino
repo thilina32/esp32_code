@@ -242,6 +242,10 @@ void setup() {
   pinMode(UPDATE_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
   pinMode(BUZZER, OUTPUT);
+
+  digitalWrite(UPDATE_LED, LOW);
+  digitalWrite(RED_LED, LOW);
+  digitalWrite(BUZZER, LOW);
   
   pinMode(US1_TRIG, OUTPUT); pinMode(US1_ECHO, INPUT);
   pinMode(US2_TRIG, OUTPUT); pinMode(US2_ECHO, INPUT);
