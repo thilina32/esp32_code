@@ -7,7 +7,7 @@
 // 🎚️ LOGGING SWITCH (ON/OFF)
 // Logs ඕනේ නැත්නම් මේක කමෙන්ට් කරන්න (//#define ENABLE_MQTT_LOGS)
 // =======================================================
-//#define ENABLE_MQTT_LOGS 
+#define ENABLE_MQTT_LOGS 
 
 #ifdef ENABLE_MQTT_LOGS
   #define MQTT_LOG(msg) { if(client.connected()) { client.publish("board/logs", String(msg).c_str()); } }
