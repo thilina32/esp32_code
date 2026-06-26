@@ -223,7 +223,7 @@ void sensorTask(void * parameter) {
       switch(triggeredPirId) {
         case 2:
           MQTT_LOG("👀 PIR 1 Triggered! Radar sweeping to 50°...");
-          sweepAndSearch(servo1, 30, US1_TRIG, US1_ECHO);
+          sweepAndSearch(servo1, 20, US1_TRIG, US1_ECHO);
           break;
           
         case 1:
@@ -233,7 +233,7 @@ void sensorTask(void * parameter) {
           
         case 3:
           MQTT_LOG("👀 PIR 3 Triggered! Radar sweeping to 50°...");
-          sweepAndSearch(servo2, 50, US2_TRIG, US2_ECHO);
+          sweepAndSearch(servo2, 20, US2_TRIG, US2_ECHO);
           break;
           
         case 4:
