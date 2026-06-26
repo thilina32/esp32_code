@@ -172,6 +172,7 @@ bool sweepAndSearch(Servo &servo, int targetAngle, int trigPin, int echoPin) {
   int startAngle = 90; 
   int step = (targetAngle > startAngle) ? 1 : -1; 
   
+  // ඉලක්කයට හැරෙන ගමන් චෙක් කිරීම (Forward Sweep)
   for (int currentAngle = startAngle; currentAngle != targetAngle + step; currentAngle += step) {
     if (isUpdating || alarmActive) return false; 
 
@@ -185,6 +186,23 @@ bool sweepAndSearch(Servo &servo, int targetAngle, int trigPin, int echoPin) {
       return true; 
     }
   }
+
+  // මුල් පිහිටුමට (90) හිමීට එන ගමන් චෙක් කිරීම (Return Sweep)
+  int returnStep = (startAngle > targetAngle) ? 1 : -1; 
+  for (int currentAngle = targetAngle; currentAngle != startAngle + returnStep; currentAngle += returnStep) {
+    if (isUpdating || alarmActive) return false; 
+
+    servo.write(currentAngle);
+    vTaskDelay(pdMS_TO_TICKS(30)); // හැරෙන වේගය
+    
+    int distance = readUltrasonic(trigPin, echoPin);
+    
+    if (distance <= 20) {
+      triggerAlarm(distance, currentAngle); 
+      return true; 
+    }
+  }
+  
   return false; 
 }
 
@@ -225,6 +243,8 @@ void sensorTask(void * parameter) {
       }
       
       if (!alarmActive) {
+        // Return Sweep එකෙන් කොහොමත් 90ට ඇවිත් තියෙන නිසා 
+        // මෙතනින් ඒක ස්ථිර කරලා තියාගන්නවා විතරයි.
         servo1.write(90);
         servo2.write(90);
         vTaskDelay(pdMS_TO_TICKS(500)); 
