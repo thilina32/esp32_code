@@ -9,7 +9,7 @@
   #define MQTT_LOG(msg) { if(client.connected()) { client.publish("board/logs", String(msg).c_str()); } }
 #else
   #define MQTT_LOG(msg) 
-#endif
+#endif 
 
 // =======================================================
 // 🔌 PINS & HARDWARE SETUP
@@ -126,12 +126,12 @@ void setup_wifi() {
 
 void reconnect() {
   while (!client.connected()) {
-    String clientId = "TuskerGuard_" + String(random(0xffff), HEX);
+    String clientId = "SentryGuard_" + String(random(0xffff), HEX);
     if (client.connect(clientId.c_str(), mqtt_user, mqtt_password, "board/status", 1, true, "Offline")) {
       client.publish("board/status", "Online", true); 
       client.subscribe("board/update");
       client.subscribe("board/control"); 
-      MQTT_LOG("🟢 TuskerGuard Online & Ready!");
+      MQTT_LOG("🟢 SentryGuard Online & Ready!");
     } else {
       vTaskDelay(pdMS_TO_TICKS(5000)); 
     }
@@ -203,12 +203,12 @@ void sensorTask(void * parameter) {
     if (xQueueReceive(pirQueue, &triggeredPirId, 0) == pdTRUE) {
       
       switch(triggeredPirId) {
-        case 1:
+        case 2:
           MQTT_LOG("👀 PIR 1 Triggered! Radar sweeping to 50°...");
           sweepAndSearch(servo1, 50, US1_TRIG, US1_ECHO);
           break;
           
-        case 2:
+        case 1:
           MQTT_LOG("👀 PIR 2 Triggered! Radar sweeping to 180°...");
           sweepAndSearch(servo1, 180, US1_TRIG, US1_ECHO);
           break;
