@@ -78,12 +78,13 @@ int readUltrasonic(int trigPin, int echoPin) {
 // =======================================================
 // 🚨 TRIGGER ALARM FUNCTION
 // =======================================================
-void triggerAlarm(int distance, int angle) {
+void triggerAlarm(int distance, int angle, int pirId) {
   alarmActive = true;
   digitalWrite(RED_LED, HIGH);
   digitalWrite(BUZZER, HIGH);
   
-  String payload = "{\"distance\":" + String(distance) + ",\"angle\":" + String(angle) + "}";
+  // Backend එකට යවන අලුත් JSON Payload එක
+  String payload = "{\"pir_id\":" + String(pirId) + ",\"distance\":" + String(distance) + ",\"angle\":" + String(angle) + "}";
   MQTT_LOG("🐘 ELEPHANT DETECTED! " + payload);
   
   if(client.connected()) {
@@ -168,7 +169,7 @@ void performOTA() {
 // =======================================================
 // 🎯 RADAR SWEEP FUNCTION
 // =======================================================
-bool sweepAndSearch(Servo &servo, int targetAngle, int trigPin, int echoPin) {
+bool sweepAndSearch(Servo &servo, int targetAngle, int trigPin, int echoPin, int pirId) {
   int startAngle = 90; 
   int step = (targetAngle > startAngle) ? 1 : -1; 
   
@@ -182,7 +183,7 @@ bool sweepAndSearch(Servo &servo, int targetAngle, int trigPin, int echoPin) {
     int distance = readUltrasonic(trigPin, echoPin);
     
     if (distance <= 20) {
-      triggerAlarm(distance, currentAngle); 
+      triggerAlarm(distance, currentAngle, pirId); 
       return true; 
     }
   }
@@ -198,7 +199,7 @@ bool sweepAndSearch(Servo &servo, int targetAngle, int trigPin, int echoPin) {
     int distance = readUltrasonic(trigPin, echoPin);
     
     if (distance <= 20) {
-      triggerAlarm(distance, currentAngle); 
+      triggerAlarm(distance, currentAngle, pirId); 
       return true; 
     }
   }
@@ -223,22 +224,22 @@ void sensorTask(void * parameter) {
       switch(triggeredPirId) {
         case 2:
           MQTT_LOG("👀 PIR 1 Triggered! Radar sweeping to 50°...");
-          sweepAndSearch(servo1, 30, US1_TRIG, US1_ECHO);
+          sweepAndSearch(servo1, 30, US1_TRIG, US1_ECHO, triggeredPirId);
           break;
           
         case 1:
           MQTT_LOG("👀 PIR 2 Triggered! Radar sweeping to 180°...");
-          sweepAndSearch(servo1, 180, US1_TRIG, US1_ECHO);
+          sweepAndSearch(servo1, 180, US1_TRIG, US1_ECHO, triggeredPirId);
           break;
           
         case 3:
           MQTT_LOG("👀 PIR 3 Triggered! Radar sweeping to 50°...");
-          sweepAndSearch(servo2, 30, US2_TRIG, US2_ECHO);
+          sweepAndSearch(servo2, 30, US2_TRIG, US2_ECHO, triggeredPirId);
           break;
           
         case 4:
           MQTT_LOG("👀 PIR 4 Triggered! Radar sweeping to 180°...");
-          sweepAndSearch(servo2, 180, US2_TRIG, US2_ECHO);
+          sweepAndSearch(servo2, 180, US2_TRIG, US2_ECHO, triggeredPirId);
           break;
       }
       
