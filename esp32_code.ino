@@ -12,35 +12,19 @@
 #endif 
 
 // =======================================================
-// 🔌 PINS & HARDWARE SETUP
+// 🔌 PINS SETUP (TESTING ONLY)
 // =======================================================
-const int PIR_PINS[4] = {4, 5, 6, 7}; // PIR 1, 2, 3, 4
-
 const int SERVO1_PIN = 15;
 const int SERVO2_PIN = 16;
-
-const int US1_TRIG = 8;
-const int US1_ECHO = 9;
-const int US2_TRIG = 10;
-const int US2_ECHO = 11;
-
-const int RED_LED = 12;
-const int BUZZER = 13;
-const int UPDATE_LED = 19; 
+const int UPDATE_LED = 19; // OTA එක වෙනකොට පත්තුවන LED එක
 
 Servo servo1;
 Servo servo2;
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
-QueueHandle_t pirQueue;
-
 volatile bool startOTA = false; 
 volatile bool isUpdating = false; 
-volatile bool alarmActive = false; 
-
-unsigned long previousBuzzerMillis = 0;
-bool buzzerState = false;
 
 // =======================================================
 // 🌐 NETWORK CONFIGURATIONS
@@ -54,112 +38,8 @@ const char* mqtt_password = "Thilinakavishan32@gmail.com";
 const char* firmware_url = "https://raw.githubusercontent.com/thilina32/esp32_code/main/code.bin"; 
 
 // =======================================================
-// ⚡ HARDWARE INTERRUPTS (ISRs)
+// 🚀 ONLINE OTA UPDATE FUNCTION
 // =======================================================
-void IRAM_ATTR isr_pir1() { int id = 1; xQueueSendFromISR(pirQueue, &id, NULL); }
-void IRAM_ATTR isr_pir2() { int id = 2; xQueueSendFromISR(pirQueue, &id, NULL); }
-void IRAM_ATTR isr_pir3() { int id = 3; xQueueSendFromISR(pirQueue, &id, NULL); }
-void IRAM_ATTR isr_pir4() { int id = 4; xQueueSendFromISR(pirQueue, &id, NULL); }
-
-// =======================================================
-// 📏 ULTRASONIC READ FUNCTION
-// =======================================================
-int readUltrasonic(int trigPin, int echoPin) {
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  
-  long duration = pulseIn(echoPin, HIGH, 3000); 
-  if (duration == 0) return 999; 
-  
-  int distance = duration * 0.034 / 2;
-  return distance;
-}
-
-// =======================================================
-// 🚨 TRIGGER ALARM FUNCTION
-// =======================================================
-void triggerAlarm(int distance, int angle, int pirId) {
-  alarmActive = true;
-  digitalWrite(RED_LED, HIGH);
-  
-  // Backend එකට යවන අලුත් JSON Payload එක
-  String payload = "{\"pir_id\":" + String(pirId) + ",\"distance\":" + String(distance) + ",\"angle\":" + String(angle) + "}";
-  MQTT_LOG("🐘 ELEPHANT DETECTED! " + payload);
-  
-  if(client.connected()) {
-    client.publish("board/alert", payload.c_str());
-  }
-}
-
-// =======================================================
-// 📡 MQTT CALLBACK & CONNECTION FUNCTIONS
-// =======================================================
-void callback(char* topic, byte* payload, unsigned int length) {
-  String message = "";
-  for (int i = 0; i < length; i++) message += (char)payload[i];
-  message.trim(); 
-
-  if (strcmp(topic, "board/update") == 0 && message.equals("START_OTA")) {
-    MQTT_LOG("🔥 OTA Signal Verified! Preparing to Update...");
-    startOTA = true;
-  }
-  
-  if (strcmp(topic, "board/control") == 0) {
-    if (message.equals("ALARM_OFF")) {
-      alarmActive = false;
-      buzzerState = false; 
-      digitalWrite(RED_LED, LOW);
-      digitalWrite(BUZZER, LOW);
-      xQueueReset(pirQueue); 
-      
-      servo1.write(90);
-      servo2.write(90);
-      MQTT_LOG("🛡️ Alarm Reset. Resuming Sensor Monitoring...");
-    } 
-    // --- Testing සඳහා Servo 1 Control කිරීම (උදා: SERVO1:90) ---
-    else if (message.startsWith("SERVO1:")) {
-      int angle = message.substring(7).toInt(); // "SERVO1:" ට පස්සේ තියෙන කෑල්ල ඉලක්කමක් කරනවා
-      if (angle >= 0 && angle <= 180) {
-        servo1.write(angle);
-        MQTT_LOG("🔧 Testing: Servo 1 moved to " + String(angle) + "°");
-      }
-    } 
-    // --- Testing සඳහා Servo 2 Control කිරීම (උදා: SERVO2:120) ---
-    else if (message.startsWith("SERVO2:")) {
-      int angle = message.substring(7).toInt(); 
-      if (angle >= 0 && angle <= 180) {
-        servo2.write(angle);
-        MQTT_LOG("🔧 Testing: Servo 2 moved to " + String(angle) + "°");
-      }
-    }
-  }
-}
-
-void setup_wifi() {
-  delay(10);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-  }
-}
-
-void reconnect() {
-  while (!client.connected()) {
-    String clientId = "SentryGuard_" + String(random(0xffff), HEX);
-    if (client.connect(clientId.c_str(), mqtt_user, mqtt_password, "board/status", 1, true, "Offline")) {
-      client.publish("board/status", "Online", true); 
-      client.subscribe("board/update");
-      client.subscribe("board/control"); 
-      MQTT_LOG("🟢 SentryGuard Online & Ready!");
-    } else {
-      vTaskDelay(pdMS_TO_TICKS(5000)); 
-    }
-  }
-}
-
 void performOTA() {
   isUpdating = true; 
   MQTT_LOG("🚀 Starting OTA Update from GitHub...");
@@ -188,92 +68,59 @@ void performOTA() {
 }
 
 // =======================================================
-// 🎯 RADAR SWEEP FUNCTION
+// 📡 MQTT CALLBACK (SERVO TESTING & OTA VERIFICATION)
 // =======================================================
-bool sweepAndSearch(Servo &servo, int targetAngle, int trigPin, int echoPin, int pirId) {
-  int startAngle = 90; 
-  int step = (targetAngle > startAngle) ? 1 : -1; 
-  
-  // ඉලක්කයට හැරෙන ගමන් චෙක් කිරීම (Forward Sweep)
-  for (int currentAngle = startAngle; currentAngle != targetAngle + step; currentAngle += step) {
-    if (isUpdating || alarmActive) return false; 
+void callback(char* topic, byte* payload, unsigned int length) {
+  String message = "";
+  for (int i = 0; i < length; i++) message += (char)payload[i];
+  message.trim(); 
 
-    servo.write(currentAngle);
-    vTaskDelay(pdMS_TO_TICKS(30)); // හැරෙන වේගය
-    
-    int distance = readUltrasonic(trigPin, echoPin);
-    
-    if (distance <= 20) {
-      triggerAlarm(distance, currentAngle, pirId); 
-      return true; 
-    }
-  }
-
-  // මුල් පිහිටුමට (90) හිමීට එන ගමන් චෙක් කිරීම (Return Sweep)
-  int returnStep = (startAngle > targetAngle) ? 1 : -1; 
-  for (int currentAngle = targetAngle; currentAngle != startAngle + returnStep; currentAngle += returnStep) {
-    if (isUpdating || alarmActive) return false; 
-
-    servo.write(currentAngle);
-    vTaskDelay(pdMS_TO_TICKS(30)); // හැරෙන වේගය
-    
-    int distance = readUltrasonic(trigPin, echoPin);
-    
-    if (distance <= 20) {
-      triggerAlarm(distance, currentAngle, pirId); 
-      return true; 
-    }
+  // GitHub එකෙන් Online Update වෙන්න සිග්නල් එක චෙක් කිරීම
+  if (strcmp(topic, "board/update") == 0 && message.equals("START_OTA")) {
+    MQTT_LOG("🔥 OTA Signal Verified! Preparing to Update...");
+    startOTA = true;
   }
   
-  return false; 
+  // Servo මෝටර් දෙක ටෙස්ට් කිරීමේ කොටස
+  if (strcmp(topic, "board/control") == 0) {
+    // Servo 1 Control (උදා: SERVO1:90)
+    if (message.startsWith("SERVO1:")) {
+      int angle = message.substring(7).toInt();
+      if (angle >= 0 && angle <= 180) {
+        servo1.write(angle);
+        MQTT_LOG("🔧 Test Mode: Servo 1 moved to " + String(angle) + "°");
+      }
+    } 
+    // Servo 2 Control (උදා: SERVO2:45)
+    else if (message.startsWith("SERVO2:")) {
+      int angle = message.substring(7).toInt(); 
+      if (angle >= 0 && angle <= 180) {
+        servo2.write(angle);
+        MQTT_LOG("🔧 Test Mode: Servo 2 moved to " + String(angle) + "°");
+      }
+    }
+  }
 }
 
-// =======================================================
-// 🔄 MAIN SENSOR TASK
-// =======================================================
-void sensorTask(void * parameter) {
-  int triggeredPirId; 
-  
-  for(;;) { 
-    if (isUpdating || alarmActive) {
-      vTaskDelay(pdMS_TO_TICKS(1000));
-      continue; 
-    }
+void setup_wifi() {
+  delay(10);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+}
 
-    if (xQueueReceive(pirQueue, &triggeredPirId, 0) == pdTRUE) {
-      
-      switch(triggeredPirId) {
-        case 2:
-          MQTT_LOG("👀 PIR 1 Triggered! Radar sweeping to 50°...");
-          sweepAndSearch(servo1, 30, US1_TRIG, US1_ECHO, triggeredPirId);
-          break;
-          
-        case 1:
-          MQTT_LOG("👀 PIR 2 Triggered! Radar sweeping to 180°...");
-          sweepAndSearch(servo1, 180, US1_TRIG, US1_ECHO, triggeredPirId);
-          break;
-          
-        case 3:
-          MQTT_LOG("👀 PIR 3 Triggered! Radar sweeping to 50°...");
-          sweepAndSearch(servo2, 30, US2_TRIG, US2_ECHO, triggeredPirId);
-          break;
-          
-        case 4:
-          MQTT_LOG("👀 PIR 4 Triggered! Radar sweeping to 180°...");
-          sweepAndSearch(servo2, 180, US2_TRIG, US2_ECHO, triggeredPirId);
-          break;
-      }
-      
-      if (!alarmActive) {
-        // Return Sweep එකෙන් කොහොමත් 90ට ඇවිත් තියෙන නිසා 
-        // මෙතනින් ඒක ස්ථිර කරලා තියාගන්නවා විතරයි.
-        servo1.write(90);
-        servo2.write(90);
-        vTaskDelay(pdMS_TO_TICKS(500)); 
-      }
+void reconnect() {
+  while (!client.connected()) {
+    String clientId = "SentryGuard_Test_" + String(random(0xffff), HEX);
+    if (client.connect(clientId.c_str(), mqtt_user, mqtt_password, "board/status", 1, true, "Offline")) {
+      client.publish("board/status", "Online", true); 
+      client.subscribe("board/update");
+      client.subscribe("board/control"); 
+      MQTT_LOG("🟢 SentryGuard [Servo Test Firmware] Online & Ready!");
+    } else {
+      delay(5000); 
     }
-
-    vTaskDelay(pdMS_TO_TICKS(50)); 
   }
 }
 
@@ -282,25 +129,9 @@ void sensorTask(void * parameter) {
 // =======================================================
 void setup() {
   pinMode(UPDATE_LED, OUTPUT);
-  pinMode(RED_LED, OUTPUT);
-  pinMode(BUZZER, OUTPUT);
-
   digitalWrite(UPDATE_LED, LOW);
-  digitalWrite(RED_LED, LOW);
-  digitalWrite(BUZZER, LOW);
   
-  pinMode(US1_TRIG, OUTPUT); pinMode(US1_ECHO, INPUT);
-  pinMode(US2_TRIG, OUTPUT); pinMode(US2_ECHO, INPUT);
-  
-  for(int i=0; i<4; i++) pinMode(PIR_PINS[i], INPUT);
-
-  pirQueue = xQueueCreate(10, sizeof(int));
-
-  attachInterrupt(digitalPinToInterrupt(PIR_PINS[0]), isr_pir1, RISING);
-  attachInterrupt(digitalPinToInterrupt(PIR_PINS[1]), isr_pir2, RISING);
-  attachInterrupt(digitalPinToInterrupt(PIR_PINS[2]), isr_pir3, RISING);
-  attachInterrupt(digitalPinToInterrupt(PIR_PINS[3]), isr_pir4, RISING);
-
+  // Servo Allocations
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
   servo1.setPeriodHertz(50);
@@ -308,29 +139,28 @@ void setup() {
   servo1.attach(SERVO1_PIN, 500, 2400);
   servo2.attach(SERVO2_PIN, 500, 2400);
   
-  servo1.write(90); servo2.write(90);
+  // Default position 90°
+  servo1.write(90); 
+  servo2.write(90);
   
   setup_wifi(); 
   
   espClient.setInsecure(); 
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
-
-  xTaskCreate(sensorTask, "SensorTask", 10000, NULL, 1, NULL);
 }
 
 void loop() {
-  if (startOTA) { startOTA = false; performOTA(); }
-  if (!client.connected()) reconnect();
-  client.loop(); 
-
-  // --- Buzzer Blink Logic (තත්පර 0.5 න් 0.5 ට) ---
-  if (alarmActive) {
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousBuzzerMillis >= 500) {
-      previousBuzzerMillis = currentMillis;
-      buzzerState = !buzzerState; // State එක මාරු කිරීම
-      digitalWrite(BUZZER, buzzerState ? HIGH : LOW);
-    }
+  if (startOTA) { 
+    startOTA = false; 
+    performOTA(); 
   }
+  
+  if (isUpdating) return; // Update වෙන අතරතුර වෙනත් දේවල් ක්‍රියාත්මක වීම නැවතීම
+
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop(); 
+  delay(10); // පොඩි ඩිලේ එකක් ස්ටේබල් වෙන්න
 }
