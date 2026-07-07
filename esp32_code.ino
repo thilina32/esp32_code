@@ -39,6 +39,9 @@ volatile bool startOTA = false;
 volatile bool isUpdating = false; 
 volatile bool alarmActive = false; 
 
+unsigned long previousBuzzerMillis = 0;
+bool buzzerState = false;
+
 // =======================================================
 // 🌐 NETWORK CONFIGURATIONS
 // =======================================================
@@ -81,7 +84,6 @@ int readUltrasonic(int trigPin, int echoPin) {
 void triggerAlarm(int distance, int angle, int pirId) {
   alarmActive = true;
   digitalWrite(RED_LED, HIGH);
-  digitalWrite(BUZZER, HIGH);
   
   // Backend එකට යවන අලුත් JSON Payload එක
   String payload = "{\"pir_id\":" + String(pirId) + ",\"distance\":" + String(distance) + ",\"angle\":" + String(angle) + "}";
@@ -105,15 +107,34 @@ void callback(char* topic, byte* payload, unsigned int length) {
     startOTA = true;
   }
   
-  if (strcmp(topic, "board/control") == 0 && message.equals("ALARM_OFF")) {
-    alarmActive = false;
-    digitalWrite(RED_LED, LOW);
-    digitalWrite(BUZZER, LOW);
-    xQueueReset(pirQueue); 
-    
-    servo1.write(90);
-    servo2.write(90);
-    MQTT_LOG("🛡️ Alarm Reset. Resuming Sensor Monitoring...");
+  if (strcmp(topic, "board/control") == 0) {
+    if (message.equals("ALARM_OFF")) {
+      alarmActive = false;
+      buzzerState = false; 
+      digitalWrite(RED_LED, LOW);
+      digitalWrite(BUZZER, LOW);
+      xQueueReset(pirQueue); 
+      
+      servo1.write(90);
+      servo2.write(90);
+      MQTT_LOG("🛡️ Alarm Reset. Resuming Sensor Monitoring...");
+    } 
+    // --- Testing සඳහා Servo 1 Control කිරීම (උදා: SERVO1:90) ---
+    else if (message.startsWith("SERVO1:")) {
+      int angle = message.substring(7).toInt(); // "SERVO1:" ට පස්සේ තියෙන කෑල්ල ඉලක්කමක් කරනවා
+      if (angle >= 0 && angle <= 180) {
+        servo1.write(angle);
+        MQTT_LOG("🔧 Testing: Servo 1 moved to " + String(angle) + "°");
+      }
+    } 
+    // --- Testing සඳහා Servo 2 Control කිරීම (උදා: SERVO2:120) ---
+    else if (message.startsWith("SERVO2:")) {
+      int angle = message.substring(7).toInt(); 
+      if (angle >= 0 && angle <= 180) {
+        servo2.write(angle);
+        MQTT_LOG("🔧 Testing: Servo 2 moved to " + String(angle) + "°");
+      }
+    }
   }
 }
 
@@ -302,4 +323,14 @@ void loop() {
   if (startOTA) { startOTA = false; performOTA(); }
   if (!client.connected()) reconnect();
   client.loop(); 
+
+  // --- Buzzer Blink Logic (තත්පර 0.5 න් 0.5 ට) ---
+  if (alarmActive) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousBuzzerMillis >= 500) {
+      previousBuzzerMillis = currentMillis;
+      buzzerState = !buzzerState; // State එක මාරු කිරීම
+      digitalWrite(BUZZER, buzzerState ? HIGH : LOW);
+    }
+  }
 }
