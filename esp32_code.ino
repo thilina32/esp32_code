@@ -140,8 +140,8 @@ void setup() {
   servo2.attach(SERVO2_PIN, 500, 2400);
   
   // Default position 90°
-  servo1.write(90); 
-  servo2.write(90);
+  //servo1.write(90); 
+  //servo2.write(90);
   
   setup_wifi(); 
   
