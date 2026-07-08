@@ -18,6 +18,11 @@ const int SERVO1_PIN = 15;
 const int SERVO2_PIN = 16;
 const int UPDATE_LED = 19; // OTA එක වෙනකොට පත්තුවන LED එක
 
+const int US1_TRIG = 8;
+const int US1_ECHO = 9;
+const int US2_TRIG = 10;
+const int US2_ECHO = 11;
+
 Servo servo1;
 Servo servo2;
 WiFiClientSecure espClient;
