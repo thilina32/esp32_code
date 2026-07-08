@@ -39,6 +39,9 @@ volatile bool startOTA = false;
 volatile bool isUpdating = false; 
 volatile bool alarmActive = false; 
 
+unsigned long previousBuzzerMillis = 0;
+bool buzzerState = false;
+
 // =======================================================
 // 🌐 NETWORK CONFIGURATIONS
 // =======================================================
@@ -78,12 +81,12 @@ int readUltrasonic(int trigPin, int echoPin) {
 // =======================================================
 // 🚨 TRIGGER ALARM FUNCTION
 // =======================================================
-void triggerAlarm(int distance, int angle) {
+void triggerAlarm(int distance, int angle, int pirId) {
   alarmActive = true;
   digitalWrite(RED_LED, HIGH);
-  digitalWrite(BUZZER, HIGH);
   
-  String payload = "{\"distance\":" + String(distance) + ",\"angle\":" + String(angle) + "}";
+  // Backend එකට යවන අලුත් JSON Payload එක
+  String payload = "{\"pir_id\":" + String(pirId) + ",\"distance\":" + String(distance) + ",\"angle\":" + String(angle) + "}";
   MQTT_LOG("🐘 ELEPHANT DETECTED! " + payload);
   
   if(client.connected()) {
@@ -110,8 +113,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
     digitalWrite(BUZZER, LOW);
     xQueueReset(pirQueue); 
     
-    servo1.write(90);
-    servo2.write(90);
+    servo1.write(110);
+    servo2.write(82);
     MQTT_LOG("🛡️ Alarm Reset. Resuming Sensor Monitoring...");
   }
 }
@@ -168,8 +171,10 @@ void performOTA() {
 // =======================================================
 // 🎯 RADAR SWEEP FUNCTION
 // =======================================================
-bool sweepAndSearch(Servo &servo, int targetAngle, int trigPin, int echoPin) {
-  int startAngle = 90; 
+// =======================================================
+// 🎯 RADAR SWEEP FUNCTION
+// =======================================================
+bool sweepAndSearch(Servo &servo, int startAngle, int targetAngle, int trigPin, int echoPin, int pirId) {
   int step = (targetAngle > startAngle) ? 1 : -1; 
   
   // ඉලක්කයට හැරෙන ගමන් චෙක් කිරීම (Forward Sweep)
@@ -177,28 +182,26 @@ bool sweepAndSearch(Servo &servo, int targetAngle, int trigPin, int echoPin) {
     if (isUpdating || alarmActive) return false; 
 
     servo.write(currentAngle);
-    vTaskDelay(pdMS_TO_TICKS(30)); // හැරෙන වේගය
+    vTaskDelay(pdMS_TO_TICKS(30)); 
     
     int distance = readUltrasonic(trigPin, echoPin);
-    
     if (distance <= 20) {
-      triggerAlarm(distance, currentAngle); 
+      triggerAlarm(distance, currentAngle, pirId); 
       return true; 
     }
   }
 
-  // මුල් පිහිටුමට (90) හිමීට එන ගමන් චෙක් කිරීම (Return Sweep)
+  // මුල් පිහිටුමට හිමීට එන ගමන් චෙක් කිරීම (Return Sweep)
   int returnStep = (startAngle > targetAngle) ? 1 : -1; 
   for (int currentAngle = targetAngle; currentAngle != startAngle + returnStep; currentAngle += returnStep) {
     if (isUpdating || alarmActive) return false; 
 
     servo.write(currentAngle);
-    vTaskDelay(pdMS_TO_TICKS(30)); // හැරෙන වේගය
+    vTaskDelay(pdMS_TO_TICKS(30)); 
     
     int distance = readUltrasonic(trigPin, echoPin);
-    
     if (distance <= 20) {
-      triggerAlarm(distance, currentAngle); 
+      triggerAlarm(distance, currentAngle, pirId); 
       return true; 
     }
   }
@@ -221,32 +224,31 @@ void sensorTask(void * parameter) {
     if (xQueueReceive(pirQueue, &triggeredPirId, 0) == pdTRUE) {
       
       switch(triggeredPirId) {
-        case 2:
-          MQTT_LOG("👀 PIR 1 Triggered! Radar sweeping to 50°...");
-          sweepAndSearch(servo1, 30, US1_TRIG, US1_ECHO);
+        case 2: // SERVO1 Minimum
+          MQTT_LOG("👀 PIR 1 Triggered! Radar sweeping to 40°...");
+          sweepAndSearch(servo1, 110, 40, US1_TRIG, US1_ECHO, triggeredPirId);
           break;
           
-        case 1:
+        case 1: // SERVO1 Maximum
           MQTT_LOG("👀 PIR 2 Triggered! Radar sweeping to 180°...");
-          sweepAndSearch(servo1, 180, US1_TRIG, US1_ECHO);
+          sweepAndSearch(servo1, 110, 180, US1_TRIG, US1_ECHO, triggeredPirId);
           break;
           
-        case 3:
-          MQTT_LOG("👀 PIR 3 Triggered! Radar sweeping to 50°...");
-          sweepAndSearch(servo2, 30, US2_TRIG, US2_ECHO);
+        case 3: // SERVO2 Minimum
+          MQTT_LOG("👀 PIR 3 Triggered! Radar sweeping to 15°...");
+          sweepAndSearch(servo2, 82, 15, US2_TRIG, US2_ECHO, triggeredPirId);
           break;
           
-        case 4:
-          MQTT_LOG("👀 PIR 4 Triggered! Radar sweeping to 180°...");
-          sweepAndSearch(servo2, 180, US2_TRIG, US2_ECHO);
+        case 4: // SERVO2 Maximum
+          MQTT_LOG("👀 PIR 4 Triggered! Radar sweeping to 150°...");
+          sweepAndSearch(servo2, 82, 150, US2_TRIG, US2_ECHO, triggeredPirId);
           break;
       }
       
       if (!alarmActive) {
-        // Return Sweep එකෙන් කොහොමත් 90ට ඇවිත් තියෙන නිසා 
-        // මෙතනින් ඒක ස්ථිර කරලා තියාගන්නවා විතරයි.
-        servo1.write(90);
-        servo2.write(90);
+        // Return Sweep එකෙන් පස්සේ අදාළ මෝටරයේ Center එකට ගෙන ඒම
+        servo1.write(110); 
+        servo2.write(82);
         vTaskDelay(pdMS_TO_TICKS(500)); 
       }
     }
@@ -301,4 +303,14 @@ void loop() {
   if (startOTA) { startOTA = false; performOTA(); }
   if (!client.connected()) reconnect();
   client.loop(); 
+
+  // --- Buzzer Blink Logic (තත්පර 0.5 න් 0.5 ට) ---
+  if (alarmActive) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousBuzzerMillis >= 250) {
+      previousBuzzerMillis = currentMillis;
+      buzzerState = !buzzerState; // State එක මාරු කිරීම
+      digitalWrite(BUZZER, buzzerState ? HIGH : LOW);
+    }
+  }
 }

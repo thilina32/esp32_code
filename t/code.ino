@@ -4,7 +4,7 @@
 #include <HTTPUpdate.h>
 #include <ESP32Servo.h>
 
-#define ENABLE_MQTT_LOGS 
+//#define ENABLE_MQTT_LOGS 
 #ifdef ENABLE_MQTT_LOGS
   #define MQTT_LOG(msg) { if(client.connected()) { client.publish("board/logs", String(msg).c_str()); } }
 #else
@@ -34,8 +34,8 @@ volatile bool isUpdating = false;
 // =======================================================
 // 🌐 NETWORK CONFIGURATIONS
 // =======================================================
-const char* ssid = "shan_dev_2";
-const char* password = "888888889";
+const char* ssid = "Galaxy F05 9607";
+const char* password = "303536&me";
 const char* mqtt_server = "65f4ab6222f64614b909988b240a72c7.s1.eu.hivemq.cloud"; 
 const int mqtt_port = 8883;
 const char* mqtt_user = "esp32"; 
