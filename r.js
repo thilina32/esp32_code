@@ -15,7 +15,7 @@ const client = mqtt.connect(options);
 
 // 👇 මෙතනින් ඔයාට ඕන Servo එකයි, හැරෙන්න ඕන අංශක ගානයි වෙනස් කරන්න
 const targetServo = 'SERVO1'; // SERVO1 හෝ SERVO2 දෙන්න
-const angle = 15;             // 0 ත් 180 ත් අතර අගයක් දෙන්න
+const angle = 180;             // 0 ත් 180 ත් අතර අගයක් දෙන්න
 
 client.on('connect', () => {
   console.log("✅ සම්බන්ධ විය! Servo Control Signal එක යවමින්...");
