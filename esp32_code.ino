@@ -70,7 +70,7 @@ void scanTwice() {
   SERIAL_LOG("🔍 Starting Dual Radar Scan...");
   
   // වට 2ක් කැරකීමට (1 cycle = වමට + දකුණට)
-  for (int cycle = 0; cycle < 2; cycle++) {
+  for (int cycle = 0; cycle < 1; cycle++) {
     
     // ➡️ Forward Sweep
     for (int step = 0; step <= 140; step++) {
@@ -87,20 +87,6 @@ void scanTwice() {
       delay(25); // මෝටරය ස්මූත් ව ගමන් කිරීමට
     }
 
-    // ⬅️ Backward Sweep
-    for (int step = 140; step >= 0; step--) {
-      int s1_angle = 40 + step; 
-      int s2_angle = 15 + (step * 135 / 140); 
-
-      servo1.write(s1_angle);
-      servo2.write(s2_angle);
-
-      checkDistanceAndLog(1, s1_angle, US1_TRIG, US1_ECHO);
-      checkDistanceAndLog(2, s2_angle, US2_TRIG, US2_ECHO);
-
-      client.loop();
-      delay(25);
-    }
   }
   SERIAL_LOG("✅ Scan Complete!");
 }
