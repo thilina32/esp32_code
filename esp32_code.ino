@@ -4,12 +4,8 @@
 #include <HTTPUpdate.h>
 #include <ESP32Servo.h>
 
-#define ENABLE_MQTT_LOGS // MQTT Logs සක්‍රිය කර ඇත
-#ifdef ENABLE_MQTT_LOGS
-  #define MQTT_LOG(msg) { if(client.connected()) { client.publish("board/logs", String(msg).c_str()); } }
-#else
-  #define MQTT_LOG(msg) 
-#endif 
+// දැන් Logs යන්නේ Serial Monitor එකට පමණි
+#define SERIAL_LOG(msg) { Serial.println(msg); }
 
 // =======================================================
 // 🔌 PINS SETUP
@@ -60,10 +56,10 @@ void checkDistanceAndLog(int servoID, int currentAngle, int trigPin, int echoPin
 
   float distance = duration * 0.034 / 2;
 
-  // දුර 20cm ට වඩා අඩු නම් පමණක් MQTT හරහා Log එකක් යවන්න
+  // දුර 20cm ට වඩා අඩු නම් පමණක් Serial Monitor එකට Log එකක් යවන්න
   if (distance > 0 && distance <= 20.0) {
     String logMsg = "🚨 ALERT! Servo: " + String(servoID) + " | Angle: " + String(currentAngle) + "° | Distance: " + String(distance, 1) + "cm";
-    MQTT_LOG(logMsg);
+    SERIAL_LOG(logMsg);
   }
 }
 
@@ -71,7 +67,7 @@ void checkDistanceAndLog(int servoID, int currentAngle, int trigPin, int echoPin
 // 🔍 DUAL SCANNING FUNCTION (දෙපාරක් කැරකි හොයන කොටස)
 // =======================================================
 void scanTwice() {
-  MQTT_LOG("🔍 Starting Dual Radar Scan...");
+  SERIAL_LOG("🔍 Starting Dual Radar Scan...");
   
   // වට 2ක් කැරකීමට (1 cycle = වමට + දකුණට)
   for (int cycle = 0; cycle < 2; cycle++) {
@@ -106,7 +102,7 @@ void scanTwice() {
       delay(25);
     }
   }
-  MQTT_LOG("✅ Scan Complete!");
+  SERIAL_LOG("✅ Scan Complete!");
 }
 
 // =======================================================
@@ -114,7 +110,7 @@ void scanTwice() {
 // =======================================================
 void performOTA() {
   isUpdating = true; 
-  MQTT_LOG("🚀 Starting OTA Update from GitHub...");
+  SERIAL_LOG("🚀 Starting OTA Update from GitHub...");
   digitalWrite(UPDATE_LED, HIGH); 
   
   WiFiClientSecure otaClient;
@@ -124,17 +120,17 @@ void performOTA() {
 
   switch (ret) {
     case HTTP_UPDATE_FAILED:
-      MQTT_LOG(String("❌ HTTP_UPDATE_FAILED Error: ") + httpUpdate.getLastErrorString());
+      SERIAL_LOG(String("❌ HTTP_UPDATE_FAILED Error: ") + httpUpdate.getLastErrorString());
       digitalWrite(UPDATE_LED, LOW); 
       isUpdating = false; 
       break;
     case HTTP_UPDATE_NO_UPDATES:
-      MQTT_LOG("⚠️ HTTP_UPDATE_NO_UPDATES: Current version is up to date.");
+      SERIAL_LOG("⚠️ HTTP_UPDATE_NO_UPDATES: Current version is up to date.");
       digitalWrite(UPDATE_LED, LOW); 
       isUpdating = false;
       break;
     case HTTP_UPDATE_OK:
-      MQTT_LOG("✅ HTTP_UPDATE_OK: Update Successful! Restarting now..."); 
+      SERIAL_LOG("✅ HTTP_UPDATE_OK: Update Successful! Restarting now..."); 
       break;
   }
 }
@@ -148,29 +144,26 @@ void callback(char* topic, byte* payload, unsigned int length) {
   message.trim(); 
 
   if (strcmp(topic, "board/update") == 0 && message.equals("START_OTA")) {
-    MQTT_LOG("🔥 OTA Signal Verified! Preparing to Update...");
+    SERIAL_LOG("🔥 OTA Signal Verified! Preparing to Update...");
     startOTA = true;
   }
   
   if (strcmp(topic, "board/control") == 0) {
-    // නව අංගය: SCAN Command එක ආවම සර්වෝ දෙකම scan කරනවා
     if (message.equals("SCAN")) {
       scanTwice();
     }
-    // Manual Servo 1 Control 
     else if (message.startsWith("SERVO1:")) {
       int angle = message.substring(7).toInt();
-      if (angle >= 40 && angle <= 180) { // සීමාවන් සකසා ඇත
+      if (angle >= 40 && angle <= 180) { 
         servo1.write(angle);
-        MQTT_LOG("🔧 Test Mode: Servo 1 moved to " + String(angle) + "°");
+        SERIAL_LOG("🔧 Test Mode: Servo 1 moved to " + String(angle) + "°");
       }
     } 
-    // Manual Servo 2 Control 
     else if (message.startsWith("SERVO2:")) {
       int angle = message.substring(7).toInt(); 
-      if (angle >= 15 && angle <= 150) { // සීමාවන් සකසා ඇත
+      if (angle >= 15 && angle <= 150) { 
         servo2.write(angle);
-        MQTT_LOG("🔧 Test Mode: Servo 2 moved to " + String(angle) + "°");
+        SERIAL_LOG("🔧 Test Mode: Servo 2 moved to " + String(angle) + "°");
       }
     }
   }
@@ -181,7 +174,9 @@ void setup_wifi() {
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
+    Serial.print(".");
   }
+  SERIAL_LOG("\n✅ WiFi Connected!");
 }
 
 void reconnect() {
@@ -191,7 +186,7 @@ void reconnect() {
       client.publish("board/status", "Online", true); 
       client.subscribe("board/update");
       client.subscribe("board/control"); 
-      MQTT_LOG("🟢 SentryGuard [Radar Firmware] Online & Ready!");
+      SERIAL_LOG("🟢 SentryGuard [Radar Firmware] Online & Ready!");
     } else {
       delay(5000); 
     }
@@ -202,6 +197,9 @@ void reconnect() {
 // ⚙️ SETUP & LOOP
 // =======================================================
 void setup() {
+  Serial.begin(115200); // Serial Communication සක්‍රිය කර ඇත
+  SERIAL_LOG("\n⚡ Booting ESP32 System...");
+
   pinMode(UPDATE_LED, OUTPUT);
   digitalWrite(UPDATE_LED, LOW);
   
